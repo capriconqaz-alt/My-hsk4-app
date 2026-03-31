@@ -3,16 +3,17 @@ import json
 import os
 from gtts import gTTS
 import base64
-import random
 
 # --- HÀM HỖ TRỢ ---
 def load_data():
+    """Tải dữ liệu từ file JSON"""
     if os.path.exists('vocab.json'):
         with open('vocab.json', 'r', encoding='utf-8') as f:
             return json.load(f)
     return []
 
 def speak(text):
+    """Phát âm tiếng Trung"""
     try:
         tts = gTTS(text=text, lang='zh-cn')
         tts.save("temp_audio.mp3")
@@ -22,85 +23,81 @@ def speak(text):
             audio_html = f'<audio autoplay="true"><source src="data:audio/mp3;base64,{b64}" type="audio/mp3"></audio>'
             st.markdown(audio_html, unsafe_allow_html=True)
     except:
-        st.error("Lỗi phát âm.")
+        st.error("Lỗi kết nối âm thanh.")
 
-# --- CẤU HÌNH GIAO DIỆN ---
-st.set_page_config(page_title="HSK4 Master & Quiz", layout="wide")
+# --- GIAO DIỆN ---
+st.set_page_config(page_title="HSK4 Master", layout="wide")
+
+# Tự động load dữ liệu
 vocab_data = load_data()
 
 if not vocab_data:
-    st.warning("⚠️ Hãy chạy 'converter.py' trước!")
+    st.error("⚠️ Không tìm thấy file 'vocab.json'! Hãy chạy file converter trước.")
 else:
-    # Khởi tạo session state
-    if 'idx' not in st.session_state: st.session_state.idx = 0
-    if 'score' not in st.session_state: st.session_state.score = 0
+    # Quản lý trạng thái từ vựng
+    if 'idx' not in st.session_state:
+        st.session_state.idx = 0
+    
+    curr = vocab_data[st.session_state.idx]
 
-    # Tạo menu điều hướng: Học tập hoặc Kiểm tra
-    menu = st.sidebar.radio("Chế độ:", ["📖 Học từ mới", "📝 Bài tập ôn tập (Quiz)"])
+    # --- HIỂN THỊ NỘI DUNG ---
+    st.title("🏮 Học HSK 4 Thông Minh")
+    st.markdown(f"**Tiến độ:** {st.session_state.idx + 1} / {len(vocab_data)}")
+    
+    col1, col2 = st.columns([1, 1])
 
-    # --- CHẾ ĐỘ HỌC TẬP ---
-    if menu == "📖 Học từ mới":
-        curr = vocab_data[st.session_state.idx]
-        st.title(f"Từ vựng số {st.session_state.idx + 1}")
+    with col1:
+        st.markdown(f"<h1 style='font-size: 80px; color: #E63946;'>{curr['word']}</h1>", unsafe_allow_html=True)
+        st.subheader(f"Pinyin: {curr['pinyin']}")
+        st.info(f"**Nghĩa:** {curr['meaning']}")
         
-        col1, col2 = st.columns([1, 1.2])
-        with col1:
-            st.markdown(f"<h1 style='font-size: 100px; color: #E63946;'>{curr['word']}</h1>", unsafe_allow_html=True)
-            st.subheader(f"Pinyin: {curr['pinyin']}")
-            if st.button("🔊 Phát âm"): speak(curr['word'])
-            st.success(f"**Nghĩa:** {curr['meaning']}")
-            with st.expander("💡 Mẹo nhớ & Ví dụ", expanded=True):
-                st.write(f"**Bộ thủ:** {curr['story']}")
-                st.write(f"**Ví dụ:** {curr['example']}")
+        if st.button("🔊 Nghe phát âm"):
+            speak(curr['word'])
+            
+        with st.expander("💡 Mẹo nhớ bộ thủ", expanded=True):
+            st.write(curr['story'])
+            
+        with st.expander("📖 Câu ví dụ", expanded=True):
+            st.write(curr['example'])
+            if st.button("🔊 Nghe ví dụ"):
+                speak(curr['example'])
 
-        with col2:
-            st.write("### ✍️ Thứ tự nét viết")
-            stroke_url = f"https://dictionary.writtenchinese.com/chart_render.php?c={curr['word']}"
-            st.components.v1.iframe(stroke_url, height=450)
-
-        # Điều hướng
-        st.divider()
-        b1, b2, b3 = st.columns([1, 2, 1])
-        with b1:
-            if st.button("⬅️ Trước"):
-                st.session_state.idx = (st.session_state.idx - 1) % len(vocab_data)
-                st.rerun()
-        with b3:
-            if st.button("Sau ➡️"):
-                st.session_state.idx = (st.session_state.idx + 1) % len(vocab_data)
-                if (st.session_state.idx) % 10 == 0 and st.session_state.idx != 0:
-                    st.toast("🌟 Bạn đã học được 10 từ! Hãy qua tab Bài tập để ôn nhé!", icon="🔥")
-                st.rerun()
-
-    # --- CHẾ ĐỘ BÀI TẬP (QUIZ) ---
-    else:
-        st.title("📝 Bài tập nối từ (Nghĩa - Hán tự)")
-        # Lấy 10 từ gần nhất để làm bài tập
-        start_idx = (st.session_state.idx // 10) * 10
-        end_idx = min(start_idx + 10, len(vocab_data))
-        quiz_words = vocab_data[start_idx:end_idx]
+    with col2:
+        st.write("### ✍️ Thứ tự nét viết")
         
-        if not quiz_words:
-            st.write("Chưa có từ nào để làm bài tập.")
-        else:
-            st.write(f"Đang ôn tập từ số {start_idx + 1} đến {end_idx}")
-            
-            # Tạo câu hỏi trắc nghiệm
-            for item in quiz_words:
-                options = [w['meaning'] for w in quiz_words]
-                correct_ans = item['meaning']
-                
-                user_choice = st.radio(f"Từ **{item['word']}** ({item['pinyin']}) có nghĩa là gì?", 
-                                       options=random.sample(options, len(options)), 
-                                       key=item['word'])
-                
-                if st.button(f"Kiểm tra từ {item['word']}"):
-                    if user_choice == correct_ans:
-                        st.balloons()
-                        st.success("Chính xác! 🎉")
-                    else:
-                        st.error(f"Sai rồi! Đáp án đúng là: {correct_ans}")
-            
-            st.sidebar.metric("Điểm của bạn", st.session_state.score)
+        # SỬ DỤNG VÒNG LẶP ĐỂ VẼ TẤT CẢ CÁC CHỮ TRONG TỪ
+        for char in curr['word']:
+            hanzi_writer_html = f"""
+            <script src="https://cdn.jsdelivr.net/npm/hanzi-writer@3.5/dist/hanzi-writer.min.js"></script>
+            <div id="target-{char}" style="display: inline-block; border: 1px solid #ddd; margin: 5px; background: white; border-radius: 10px;"></div>
+            <script>
+                var writer = HanziWriter.create('target-{char}', '{char}', {{
+                    width: 200,
+                    height: 200,
+                    padding: 5,
+                    showOutline: true,
+                    strokeAnimationSpeed: 1, 
+                    delayBetweenStrokes: 300
+                }});
+                writer.animateCharacter();
+            </script>
+            """
+            st.components.v1.html(hanzi_writer_html, height=220)
 
-    st.sidebar.markdown(f"**Tiến độ: {st.session_state.idx + 1}/{len(vocab_data)}**")
+    # --- ĐIỀU HƯỚNG ---
+    st.divider()
+    c1, c2, c3 = st.columns([1, 2, 1])
+    with c1:
+        if st.button("⬅️ Trước"):
+            st.session_state.idx = (st.session_state.idx - 1) % len(vocab_data)
+            st.rerun()
+    with c2:
+        # Thanh trượt nhảy nhanh đến từ bất kỳ
+        selected_idx = st.slider("Nhảy nhanh đến từ:", 1, len(vocab_data), st.session_state.idx + 1)
+        if selected_idx != st.session_state.idx + 1:
+            st.session_state.idx = selected_idx - 1
+            st.rerun()
+    with c3:
+        if st.button("Sau ➡️"):
+            st.session_state.idx = (st.session_state.idx + 1) % len(vocab_data)
+            st.rerun()
